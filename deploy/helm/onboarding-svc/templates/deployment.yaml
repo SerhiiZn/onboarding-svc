@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-onboarding-svc
+  labels:
+    app: {{ .Release.Name }}-onboarding-svc
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ .Release.Name }}-onboarding-svc
+  template:
+    metadata:
+      labels:
+        app: {{ .Release.Name }}-onboarding-svc
+    spec:
+      volumes:
+        - name: artifacts-volume
+          emptyDir: {}
+
+      initContainers:
+        - name: fetch-s3-artifacts
+          image: {{ .Values.initContainer.image }}
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "Downloading artifacts from S3..."
+              aws s3 cp s3://${S3_BUCKET_NAME}/${ARTIFACT_KEY} /app/artifacts/bundle.tar.gz
+              tar -xzf /app/artifacts/bundle.tar.gz -C /app/artifacts/
+              echo "Artifacts successfully fetched and extracted."
+          env:
+            - name: S3_BUCKET_NAME
+              value: {{ .Values.initContainer.s3Bucket | quote }}
+            - name: ARTIFACT_KEY
+              value: {{ .Values.initContainer.s3Key | quote }}
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.initContainer.awsSecretName }}
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.initContainer.awsSecretName }}
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: AWS_DEFAULT_REGION
+              value: {{ .Values.initContainer.awsRegion | quote }}
+          volumeMounts:
+            - name: artifacts-volume
+              mountPath: /app/artifacts
+
+      containers:
+        - name: onboarding-svc
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ARTIFACTS_DIR
+              value: "/app/shared-artifacts"
+          volumeMounts:
+            - name: artifacts-volume
+              mountPath: /app/shared-artifacts
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10

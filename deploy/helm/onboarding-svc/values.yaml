@@ -1,0 +1,45 @@
+# ==============================================================================
+# Helm Values Configuration for onboarding-svc
+# Environment: OpenShift (serhiizn-dev) | Storage: Filebase S3
+# ==============================================================================
+
+# Кількість реплік пода
+replicaCount: 1
+
+# Налаштування основного контейнера приложения
+image:
+  # Внутрішній Image Registry вашого OpenShift проекту serhiizn-dev
+  repository: image-registry.openshift-image-registry.svc:5000/serhiizn-dev/onboarding-svc
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Порт, який слухає FastAPI додаток
+service:
+  port: 8080
+  targetPort: 8080
+
+# Конфігурація initContainer для завантаження артефактів з Filebase S3
+initContainer:
+  image: amazon/aws-cli:latest
+  
+  # Налаштування Filebase S3
+  endpointUrl: "https://s3.filebase.com"
+  s3Bucket: "testserhii"
+  s3Key: "pipelines/latest/meta_bundle.tar.gz"
+  
+  # Назва OpenShift Secret, створеного командою `oc create secret generic filebase-s3-credentials`
+  awsSecretName: "filebase-s3-credentials"
+  awsRegion: "us-east-1"
+
+# Шлях всередині контейнера для зчитування артефактів
+appEnv:
+  artifactsDir: "/app/shared-artifacts"
+
+# Налаштування ресурсів для пода в OpenShift (лимиты и запросы)
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi

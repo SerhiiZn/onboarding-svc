@@ -1,0 +1,13 @@
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ .Release.Name }}-onboarding-svc
+  namespace: serhiizn-dev
+  labels:
+    app: {{ .Release.Name }}-onboarding-svc
+spec:
+  to:
+    kind: Service
+    name: {{ .Release.Name }}-onboarding-svc
+  port:
+    targetPort: 8080

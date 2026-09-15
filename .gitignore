@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+env/
+
+# Artifacts & Local Downloads
+/shared-artifacts/
+*.tar.gz
+*.json
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+
+# Secrets & Local Envs
+.env
+*.pem
