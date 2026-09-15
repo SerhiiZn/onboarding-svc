@@ -1,69 +1,58 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-onboarding-svc
+  name: {{ include "onboarding-svc.fullname" . }}
   labels:
-    app: {{ .Release.Name }}-onboarding-svc
+    {{- include "onboarding-svc.labels" . | nindent 4 }}
 spec:
-  replicas: {{ .Values.replicaCount }}
+  replicas: {{ .Values.replicaCount | default 1 }}
   selector:
     matchLabels:
-      app: {{ .Release.Name }}-onboarding-svc
+      {{- include "onboarding-svc.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        app: {{ .Release.Name }}-onboarding-svc
+        {{- include "onboarding-svc.selectorLabels" . | nindent 8 }}
     spec:
       volumes:
-        - name: artifacts-volume
+        - name: shared-artifacts
           emptyDir: {}
-
+      
       initContainers:
         - name: fetch-s3-artifacts
-          image: {{ .Values.initContainer.image }}
-          command:
-            - /bin/sh
-            - -c
+          image: amazon/aws-cli:latest
+          command: ["/bin/sh", "-c"]
+          args:
             - |
-              echo "Downloading artifacts from S3..."
-              aws s3 cp s3://${S3_BUCKET_NAME}/${ARTIFACT_KEY} /app/artifacts/bundle.tar.gz
-              tar -xzf /app/artifacts/bundle.tar.gz -C /app/artifacts/
-              echo "Artifacts successfully fetched and extracted."
-          env:
-            - name: S3_BUCKET_NAME
-              value: {{ .Values.initContainer.s3Bucket | quote }}
-            - name: ARTIFACT_KEY
-              value: {{ .Values.initContainer.s3Key | quote }}
-            - name: AWS_ACCESS_KEY_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.initContainer.awsSecretName }}
-                  key: AWS_ACCESS_KEY_ID
-            - name: AWS_SECRET_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.initContainer.awsSecretName }}
-                  key: AWS_SECRET_ACCESS_KEY
-            - name: AWS_DEFAULT_REGION
-              value: {{ .Values.initContainer.awsRegion | quote }}
+              set -e
+              echo "==> Downloading meta_bundle.tar.gz from Filebase S3..."
+              aws --endpoint-url https://s3.filebase.io --region us-east-1 s3 cp s3://testserhii/pipelines/latest/meta_bundle.tar.gz /tmp/meta_bundle.tar.gz
+              
+              echo "==> Extracting archive using Python..."
+              python3 -c "import tarfile; tarfile.open('/tmp/meta_bundle.tar.gz').extractall('/app/shared-artifacts')"
+              
+              echo "==> Setting permissions for extracted files..."
+              find /app/shared-artifacts -exec chmod g+rwX {} + || true
+              
+              echo "==> Artifacts successfully prepared:"
+              ls -la /app/shared-artifacts
+          envFrom:
+            - secretRef:
+                name: filebase-s3-credentials
           volumeMounts:
-            - name: artifacts-volume
-              mountPath: /app/artifacts
+            - name: shared-artifacts
+              mountPath: /app/shared-artifacts
 
       containers:
-        - name: onboarding-svc
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        - name: {{ .Chart.Name }}
+          image: "image-registry.openshift-image-registry.svc:5000/{{ .Release.Namespace }}/{{ .Chart.Name }}:latest"
+          imagePullPolicy: Always
           ports:
-            - containerPort: 8080
-          env:
-            - name: ARTIFACTS_DIR
-              value: "/app/shared-artifacts"
+            - name: http
+              containerPort: 8000
+              protocol: TCP
           volumeMounts:
-            - name: artifacts-volume
+            - name: shared-artifacts
               mountPath: /app/shared-artifacts
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
